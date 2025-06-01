@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Mood Journal</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>🤖 AI Mood Journal</h1>
+    
+    <div class="mood-input-container">
+      <div class="input-group">
+        <label for="mood">How do you feel today? 😊</label>
+        <input type="text" id="mood" placeholder="Happy, Sad, Excited, etc.">
+      </div>
+
+      <div class="input-group">
+        <label for="notes">Notes (optional) ✍️</label>
+        <textarea id="notes" rows="4" placeholder="Write about your day..."></textarea>
+      </div>
+
+      <button onclick="logMood()">Analyze Mood ✨</button>
+    </div>
+
+    <div id="loading" class="loading"></div>
+
+    <div id="ai-insights" class="ai-insights hidden">
+      <h2>🤖 AI Insights</h2>
+      <div class="insight-cards">
+        <div class="card sentiment-card">
+          <h3>Sentiment Analysis</h3>
+          <div id="sentiment-score"></div>
+        </div>
+        <div class="card recommendation-card">
+          <h3>AI Recommendation</h3>
+          <p id="ai-recommendation"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="analytics-section">
+      <h2>📊 Mood Analytics</h2>
+      <div class="charts-container">
+        <div class="chart-card">
+          <h3>Mood Trends</h3>
+          <canvas id="moodTrendChart"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3>Energy Levels</h3>
+          <canvas id="energyChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <h2>📝 Mood History</h2>
+    <table id="moodTable">
+      <thead>
+        <tr>
+          <th>Date 📅</th>
+          <th>Mood 😊</th>
+          <th>Notes 📝</th>
+          <th>Sentiment 📈</th>
+          <th>AI Recommendation 🤖</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Mood logs will appear here -->
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const moodEmojis = {
+      'happy': '😊',
+      'sad': '😢',
+      'excited': '🤩',
+      'angry': '😠',
+      'neutral': '😐',
+      'tired': '😴',
+      'anxious': '😰',
+      'relaxed': '😌',
+      'stressed': '😫',
+      'grateful': '🙏',
+    };
+
+    function getMoodEmoji(mood) {
+      const lowerMood = mood.toLowerCase();
+      for (const [key, emoji] of Object.entries(moodEmojis)) {
+        if (lowerMood.includes(key)) return emoji;
+      }
+      return '😊';
+    }
+
+    let moodTrendChart;
+    let energyChart;
+
+    function initializeCharts() {
+      const moodCtx = document.getElementById('moodTrendChart').getContext('2d');
+      const energyCtx = document.getElementById('energyChart').getContext('2d');
+
+      moodTrendChart = new Chart(moodCtx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Mood Sentiment',
+            data: [],
+            borderColor: 'rgb(108, 92, 231)',
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+
+      energyChart = new Chart(energyCtx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Energy Level',
+            data: [],
+            borderColor: 'rgb(168, 164, 230)',
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    }
+
+    async function logMood() {
+      const moodInput = document.getElementById('mood');
+      const notesInput = document.getElementById('notes');
+      const loadingDiv = document.getElementById('loading');
+      const submitButton = document.querySelector('button');
+      const aiInsights = document.getElementById('ai-insights');
+
+      const mood = moodInput.value;
+      const notes = notesInput.value;
+
+      if (!mood) {
+        alert('Please enter your mood!');
+        return;
+      }
+
+      loadingDiv.style.display = 'block';
+      submitButton.disabled = true;
+      aiInsights.classList.add('hidden');
+
+      try {
+        const response = await fetch('http://127.0.0.1:5000/log_mood', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mood, notes })
+        });
+
+        const data = await response.json();
+        
+        // Update AI insights
+        document.getElementById('sentiment-score').textContent = 
+          `${(data.sentiment * 100).toFixed(1)}% ${data.sentiment >= 0 ? 'Positive' : 'Negative'}`;
+        document.getElementById('ai-recommendation').textContent = data.recommendation;
+        aiInsights.classList.remove('hidden');
+
+        moodInput.value = '';
+        notesInput.value = '';
+        
+        loadMoods();
+      } catch (error) {
+        alert('Error logging mood. Please try again.');
+      } finally {
+        loadingDiv.style.display = 'none';
+        submitButton.disabled = false;
+      }
+    }
+
+    async function loadMoods() {
+      const loadingDiv = document.getElementById('loading');
+      loadingDiv.style.display = 'block';
+
+      try {
+        const response = await fetch('http://127.0.0.1:5000/mood_summary');
+        const data = await response.json();
+
+        const tbody = document.querySelector('#moodTable tbody');
+        tbody.innerHTML = '';
+
+        // Update charts
+        const dates = data.data.map(entry => entry[0].split(' ')[0]);
+        const sentiments = data.data.map(entry => entry[3]);
+        const energyLevels = data.data.map(entry => entry[4]);
+
+        moodTrendChart.data.labels = dates;
+        moodTrendChart.data.datasets[0].data = sentiments;
+        moodTrendChart.update();
+
+        energyChart.data.labels = dates;
+        energyChart.data.datasets[0].data = energyLevels;
+        energyChart.update();
+
+        // Update table
+        data.data.forEach(entry => {
+          const row = document.createElement('tr');
+          row.className = 'new-entry';
+          const moodEmoji = getMoodEmoji(entry[1]);
+          row.innerHTML = `
+            <td>${entry[0]}</td>
+            <td>${moodEmoji} ${entry[1]}</td>
+            <td>${entry[2]}</td>
+            <td>${getSentimentEmoji(entry[3])} ${entry[3].toFixed(2)}</td>
+            <td>${entry[5]}</td>
+          `;
+          tbody.appendChild(row);
+        });
+      } catch (error) {
+        console.error('Error loading moods:', error);
+      } finally {
+        loadingDiv.style.display = 'none';
+      }
+    }
+
+    function getSentimentEmoji(sentiment) {
+      if (sentiment >= 0.7) return '🌟';
+      if (sentiment >= 0.3) return '😊';
+      if (sentiment >= -0.3) return '😐';
+      if (sentiment >= -0.7) return '😔';
+      return '😢';
+    }
+
+    // Initialize charts and load moods on page load
+    initializeCharts();
+    loadMoods();
+  </script>
+</body>
+</html>
